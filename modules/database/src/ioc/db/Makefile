@@ -66,6 +66,7 @@ DOCS += $(patsubst %.dbd.pod,%.md,$(dbMenusPod))
 DOCS += dbCommonRecord.md
 DOCS += dbCommonInput.md
 DOCS += dbCommonOutput.md
+DOCS += EPICS_Process_Database_Concepts.md
 
 HTMLS += $(patsubst %.dbd.pod,%.html,$(dbMenusPod))
 HTMLS += dbCommonRecord.html
