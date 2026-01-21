@@ -26,22 +26,12 @@
 
 #define EPICS_PRIVATE_API
 
-#include "epicsMath.h"
-#include "errlog.h"
-#include "macLib.h"
-#include "epicsStdio.h"
-#include "epicsString.h"
-#include "epicsStdlib.h"
-#include "epicsThread.h"
-#include "epicsMutex.h"
-#include "envDefs.h"
-#include "registry.h"
+// Recent readline.h uses printf in an attribute
+#define epicsStdioStdStreams
+#define epicsStdioStdPrintfEtc
+
 #include "epicsReadline.h"
-#include "cantProceed.h"
-#include "iocsh.h"
-
 #include "epicsReadlinePvt.h"
-
 #if EPICS_COMMANDLINE_LIBRARY == EPICS_COMMANDLINE_LIBRARY_READLINE
 #  include <readline/readline.h>
 #  include <readline/history.h>
@@ -61,6 +51,19 @@
 static const char *rl_basic_quote_characters;
 #  endif
 #endif
+
+#include "epicsMath.h"
+#include "errlog.h"
+#include "macLib.h"
+#include "epicsStdio.h"
+#include "epicsString.h"
+#include "epicsStdlib.h"
+#include "epicsThread.h"
+#include "epicsMutex.h"
+#include "envDefs.h"
+#include "registry.h"
+#include "cantProceed.h"
+#include "iocsh.h"
 
 extern "C" {
 
@@ -165,7 +168,7 @@ void iocshRegisterImpl (const iocshFuncDef *piocshFuncDef,
     }
     n = (struct iocshCommand *) callocMustSucceed (1, sizeof *n,
         "iocshRegister");
-    if (!registryAdd(iocshCmdID, piocshFuncDef->name, (void *)n)) {
+    if (!registryAdd(iocshCmdID, piocshFuncDef->name, n)) {
         free (n);
         errlogPrintf ("iocshRegister failed to add %s\n", piocshFuncDef->name);
         return;
@@ -639,8 +642,9 @@ struct ReadlineContext {
             if(!hist_file.empty()) {
                 if(int err = read_history(hist_file.c_str())) {
                     if(err!=ENOENT)
-                        fprintf(stderr, ERL_ERROR " %s (%d) loading '%s'\n",
-                                strerror(err), err, hist_file.c_str());
+                        fprintf(epicsGetStderr(),
+                            ERL_ERROR " %s (%d) loading '%s'\n",
+                            strerror(err), err, hist_file.c_str());
                 }
                 stifle_history(1024); // some limit...
             }
@@ -654,8 +658,9 @@ struct ReadlineContext {
 #ifdef USE_READLINE
             if(!hist_file.empty()) {
                 if(int err = write_history(hist_file.c_str())) {
-                    fprintf(stderr, ERL_ERROR " %s (%d) writing '%s'\n",
-                            strerror(err), err, hist_file.c_str());
+                    fprintf(epicsGetStderr(),
+                        ERL_ERROR " %s (%d) writing '%s'\n",
+                        strerror(err), err, hist_file.c_str());
                 }
             }
             rl_readline_name = prev_rl_readline_name;
@@ -737,7 +742,7 @@ void epicsStdCall iocshRegisterVariable (const iocshVarDef *piocshVarDef)
         if (!found) {
             n = (struct iocshVariable *) callocMustSucceed(1, sizeof *n,
                 "iocshRegisterVariable");
-            if (!registryAdd(iocshVarID, piocshVarDef->name, (void *)n)) {
+            if (!registryAdd(iocshVarID, piocshVarDef->name, n)) {
                 free(n);
                 iocshTableUnlock();
                 errlogPrintf("iocshRegisterVariable failed to add %s.\n",
@@ -852,12 +857,13 @@ cvtArg (const char *filename, int lineno, char *arg, iocshArgBuf *argBuf,
 
     case iocshArgPersistentString:
         if (arg != NULL) {
-            argBuf->sval = (char *) malloc(strlen(arg) + 1);
+            size_t slen = strlen(arg);
+            argBuf->sval = (char *) malloc(slen + 1);
             if (argBuf->sval == NULL) {
                 showError(filename, lineno, ANSI_RED("Out of memory!"));
                 return 0;
             }
-            strcpy(argBuf->sval, arg);
+            strncpy(argBuf->sval, arg, slen);
         } else {
           argBuf->sval = NULL;
         }
@@ -1096,7 +1102,7 @@ iocshBody (const char *pathname, const char *commandLine, const char *macros)
             return -1;
         }
 
-        epicsThreadPrivateSet(iocshContextId, (void *) context);
+        epicsThreadPrivateSet(iocshContextId, context);
     }
     MAC_HANDLE *handle = context->handle;
 
@@ -1166,7 +1172,7 @@ iocshBody (const char *pathname, const char *commandLine, const char *macros)
         if (c == '#') {
             if ((prompt == NULL) && (commandLine == NULL))
                 if (raw[icin + 1] != '-') {
-                    printf(ANSI_BLUE("%s") "\n", raw);
+                    fprintf(epicsGetStdout(), ANSI_BLUE("%s") "\n", raw);
                 }
             continue;
         }
@@ -1193,7 +1199,7 @@ iocshBody (const char *pathname, const char *commandLine, const char *macros)
          */
         if ((prompt == NULL) && *line && (commandLine == NULL)) {
             if ((c != '#') || (line[icin + 1] != '-')) {
-                printf(ANSI_BOLD("%s") "\n", line);
+                fprintf(epicsGetStdout(), ANSI_BOLD("%s") "\n", line);
             }
         }
 
@@ -1507,7 +1513,7 @@ static const iocshArg *onArgs[1] = {&onArg0};
 static const iocshFuncDef onFuncDef = {"on", 1, onArgs,
                                        "Change IOC shell error handling.\n"
                                        "  continue (default) - Ignores error and continue with next commands.\n"
-                                       "  break - Return to caller without executing futher commands.\n"
+                                       "  break - Return to caller without executing further commands.\n"
                                        "  halt - Suspend process.\n"
                                        "  wait - stall process for <delay> seconds, then continue.\n"};
 static void onCallFunc(const iocshArgBuf *args)

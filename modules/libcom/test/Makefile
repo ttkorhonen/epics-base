@@ -10,6 +10,9 @@
 TOP = ../../..
 include $(TOP)/configure/CONFIG
 
+# allow tests to peek at private headers
+USR_CPPFLAGS += -I$(TOP)/modules/libcom/src
+
 PROD_LIBS += Com
 PROD_SYS_LIBS_WIN32 += ws2_32 advapi32 user32
 PROD_SYS_LIBS_solaris += socket nsl
@@ -256,6 +259,11 @@ osiSockTest_SRCS += osiSockTest.c
 testHarness_SRCS += osiSockTest.c
 TESTS += osiSockTest
 
+TESTPROD_HOST += afterIocRunningTest
+afterIocRunningTest_SRCS += afterIocRunningTest.cpp
+TESTS += afterIocRunningTest
+testHarness_SRCS += afterIocRunningTest.cpp
+
 TESTPROD_HOST += testexecname
 testexecname_SRCS += testexecname.c
 # no point in including in testHarness.  Not implemented for RTEMS/vxWorks.
@@ -337,6 +345,13 @@ testHarness_SRCS += nonEpicsThreadPriorityTest.cpp
 epicsRunLibComTests_CFLAGS += -DHAVE_PTHREAD_PRIORITY_SCHEDULING
 TESTS += nonEpicsThreadPriorityTest
 endif
+endif
+
+ifneq ($(filter READLINE EPICS,$(COMMANDLINE_LIBRARY)),)
+TESTPROD_HOST += readlineTest
+readlineTest_SRCS += readlineTest.c
+TESTS += readlineTest
+TESTFILES += ../multiline-input.txt ../multiline-expect.txt
 endif
 
 include $(TOP)/configure/RULES

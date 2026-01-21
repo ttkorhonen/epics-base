@@ -120,7 +120,7 @@ static int dbca_chan_count;
  * The libca callbacks take no action if pca->plink==NULL.
  *
  *   dbCaPutLinkCallback causes an additional complication because
- *   when dbCaRemoveLink is called the callback may not have occured.
+ *   when dbCaRemoveLink is called the callback may not have occurred.
  *   If putComplete sees plink==0 it will not call the user's code.
  *   If pca->putCallback is non-zero, dbCaTask will call the
  *   user's callback AFTER it has called ca_clear_channel.
@@ -209,9 +209,9 @@ void testdbCaWaitForEventCB(void *raw)
 {
     struct waitPvt *pvt = raw;
 
-    epicsMutexMustLock(pvt->pca->lock);
+    epicsMutexMustLock(workListLock);
     epicsEventMustTrigger(pvt->evt);
-    epicsMutexUnlock(pvt->pca->lock);
+    epicsMutexUnlock(workListLock);
 }
 
 static
@@ -239,8 +239,6 @@ void testdbCaWaitForEvent(DBLINK *plink, unsigned long cnt, enum testEvent event
         dbScanUnlock(plink->precord);
 
         epicsEventMustWait(evt);
-        /* ensure worker has finished executing */
-        dbCaSync();
 
         dbScanLock(plink->precord);
         epicsMutexMustLock(pca->lock);
@@ -250,8 +248,15 @@ void testdbCaWaitForEvent(DBLINK *plink, unsigned long cnt, enum testEvent event
         pca->userPvt = NULL;
     }
 
-    epicsEventDestroy(evt);
     epicsMutexUnlock(pca->lock);
+
+    /* ensure worker has finished executing */
+    dbCaSync();
+
+    epicsMutexMustLock(workListLock); /* lock to ensure that epicsEventMustTrigger() has returned */
+    epicsEventDestroy(evt);
+    epicsMutexUnlock(workListLock);
+
     caLinkDec(pca);
     dbScanUnlock(plink->precord);
 }
@@ -266,6 +271,10 @@ void testdbCaWaitForUpdateCount(DBLINK *plink, unsigned long cnt)
     testdbCaWaitForEvent(plink, cnt, testEventCount);
 }
 
+// private access to access.cpp
+LIBCA_API
+void dbCaSyncLocal(void);
+
 /* Block until worker thread has processed all previously queued actions.
  * Does not prevent additional actions from being queued.
  */
@@ -273,6 +282,8 @@ void dbCaSync(void)
 {
     epicsEventId wake;
     caLink templink;
+
+    dbCaSyncLocal();
 
     /* we only partially initialize templink.
      * It has no link field and no subscription
@@ -487,7 +498,7 @@ long dbCaGetLink(struct link *plink, short dbrType, void *pdest,
             ntoget = pca->usedelements;
         *nelements = ntoget;
 
-        memset((void *)&dbAddr, 0, sizeof(dbAddr));
+        memset(&dbAddr, 0, sizeof(dbAddr));
         dbAddr.pfield = pca->pgetNative;
         /*Following will only be used for pca->dbrType == DBR_STRING*/
         dbAddr.field_size = MAX_STRING_SIZE;
@@ -568,7 +579,7 @@ long dbCaPutLinkCallback(struct link *plink,short dbrType,
             long (*aConvert)(struct dbAddr *paddr, const void *from, long nreq, long nfrom, long off);
 
             aConvert = dbPutConvertRoutine[dbrType][newType];
-            memset((void *)&dbAddr, 0, sizeof(dbAddr));
+            memset(&dbAddr, 0, sizeof(dbAddr));
             dbAddr.pfield = pca->pputNative;
             /*Following only used for DBF_STRING*/
             dbAddr.field_size = MAX_STRING_SIZE;
@@ -1139,7 +1150,7 @@ static void dbCaTask(void *arg)
             }
             if (link_action & CA_CONNECT) {
                 status = ca_create_channel(
-                      pca->pvname,connectionCallback,(void *)pca,
+                      pca->pvname, connectionCallback, pca,
                       CA_PRIORITY_DB_LINKS, &(pca->chid));
                 if (status != ECA_NORMAL) {
                     errlogPrintf("dbCaTask ca_create_channel %s\n",

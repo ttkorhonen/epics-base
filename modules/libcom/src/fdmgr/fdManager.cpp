@@ -19,6 +19,8 @@
 // 1) This library is not thread safe
 //
 
+#include <iostream>
+
 #define instantiateRecourceLib
 #include "epicsAssert.h"
 #include "epicsThread.h"
@@ -187,18 +189,11 @@ LIBCOM_API void fdManager::process(double delay)
         ++ioPending;
 
 #ifdef FDMGR_USE_POLL
-#if __cplusplus >= 201100L
-        priv->pollfds.emplace_back(pollfd{
-            .fd = iter->getFD(),
-            .events = WIN_POLLEVENT_FILTER(PollEvents[iter->getType()])
-        });
-#else
         struct pollfd pollfd;
         pollfd.fd = iter->getFD();
         pollfd.events = WIN_POLLEVENT_FILTER(PollEvents[iter->getType()]);
         pollfd.revents = 0;
         priv->pollfds.push_back(pollfd);
-#endif
 #endif
 
 #ifdef FDMGR_USE_SELECT
@@ -372,11 +367,15 @@ fdReg::~fdReg()
 //
 void fdReg::show(unsigned level) const
 {
-    printf("fdReg at %p\n", this);
-    if (level > 1u) {
-        printf("\tstate = %d, onceOnly = %d\n",
-            state, onceOnly);
-    }
+    std::cout << "fdReg at " << this << "\n";
+    if (level > 1)
+        std::cout << "\tstate = " << (
+                        state == active ? "active" :
+                        state == pending ? "pending" :
+                        state == limbo ? "limbo" :
+                        "invalid")
+                  << ", onceOnly = " << (onceOnly ? "true" : "false")
+                  << "\n";
     fdRegId::show(level);
 }
 
@@ -385,15 +384,17 @@ void fdReg::show(unsigned level) const
 //
 void fdRegId::show(unsigned level) const
 {
-    printf("fdRegId at %p\n", this);
-    if (level > 1u) {
-        printf("\tfd = %"
-#if defined(_WIN32)
-            "I"
-#endif
-        "d, type = %d\n",
-            fd, type);
+    std::cout << "fdRegId at " << this << "\n";
+    if (level > 1) {
+        std::cout << "\tfd = " << fd
+                  << ", type = " << (
+                        type == fdrRead ? "fdrRead" :
+                        type == fdrWrite ? "fdrWrite" :
+                        type == fdrException ? "fdrException" :
+                        "invalid")
+                  << "\n";
     }
+    std::cout << std::flush;
 }
 
 //

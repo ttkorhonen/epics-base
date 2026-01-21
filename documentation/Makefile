@@ -21,6 +21,7 @@ RTD_SRC = $(COMMON_DIR)/rtd-src
 
 DOCS += README.md
 DOCS += ca-cli.md
+DOCS += ReleaseChecklist.md
 
 OLD_NOTES = $(wildcard ../RELEASE-*.md)
 DOCS += $(OLD_NOTES:../%=%)

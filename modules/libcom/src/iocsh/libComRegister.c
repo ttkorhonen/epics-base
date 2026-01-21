@@ -27,6 +27,7 @@
 #include "epicsGeneralTime.h"
 #include "freeList.h"
 #include "libComRegister.h"
+#include "afterIocRunning.h"
 
 /* Register the PWD environment variable when the cd IOC shell function is
  * registered. This variable contains the current directory path.
@@ -214,7 +215,7 @@ static void registryDumpCallFunc(const iocshArgBuf *args)
 static const iocshFuncDef iocLogInitFuncDef = {"iocLogInit",0,0,
                                                "Initialize IOC logging\n"
                                                "  * EPICS environment variable 'EPICS_IOC_LOG_INET' has to be defined\n"
-                                               "  * Logging controled via 'iocLogDisable' variable\n"
+                                               "  * Logging controlled via 'iocLogDisable' variable\n"
                                                "       see 'setIocLogDisable' command\n"};
 static void iocLogInitCallFunc(const iocshArgBuf *args)
 {
@@ -511,6 +512,8 @@ void epicsStdCall libComRegister(void)
 
     iocshRegister(&generalTimeReportFuncDef,generalTimeReportCallFunc);
     iocshRegister(&installLastResortEventProviderFuncDef, installLastResortEventProviderCallFunc);
+
+    afterIocRunningRegister();
 
     comDefs[0].pval = &asCheckClientIP;
     comDefs[1].pval = &freeListBypass;

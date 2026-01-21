@@ -183,7 +183,7 @@ static void get_enum_strs(DBADDR *paddr, char **ppbuffer,
         }
 
         if(nchoices > NELEMENTS(penum->strs))
-            nchoices = NELEMENTS(penum->strs); /* availible > capacity, truncated list */
+            nchoices = NELEMENTS(penum->strs); /* available > capacity, truncated list */
 
         penum->no_str = nchoices;
 
@@ -550,7 +550,7 @@ long dbProcess(dbCommon *precord)
         monitor_mask |= DBE_VALUE|DBE_LOG;
         pdbFldDes = pdbRecordType->papFldDes[pdbRecordType->indvalFlddes];
         db_post_events(precord,
-                (void *)(((char *)precord) + pdbFldDes->offset),
+                ((char *)precord) + pdbFldDes->offset,
                 monitor_mask);
         goto all_done;
     }
@@ -587,7 +587,7 @@ long dbProcess(dbCommon *precord)
         db_post_events(precord, &precord->sevr, DBE_VALUE);
         pdbFldDes = pdbRecordType->papFldDes[pdbRecordType->indvalFlddes];
         db_post_events(precord,
-                (void *)(((char *)precord) + pdbFldDes->offset),
+                ((char *)precord) + pdbFldDes->offset,
                 DBE_VALUE|DBE_ALARM);
         goto all_done;
     }
@@ -597,7 +597,7 @@ long dbProcess(dbCommon *precord)
     if (!prset || !prset->process) {
         callNotifyCompletion = TRUE;
         precord->pact = 1;/*set pact so error is issued only once*/
-        recGblRecordError(S_db_noRSET, (void *)precord, "dbProcess");
+        recGblRecordError(S_db_noRSET, precord, "dbProcess");
         status = S_db_noRSET;
         if (*ptrace)
             printf("%s: No RSET for %s\n", context, precord->name);
@@ -709,7 +709,7 @@ void dbInitEntryFromAddr(struct dbAddr *paddr, DBENTRY *pdbentry)
     struct dbCommon *prec = paddr->precord;
     dbCommonPvt *ppvt = dbRec2Pvt(prec);
 
-    memset((char *)pdbentry,'\0',sizeof(DBENTRY));
+    memset(pdbentry, '\0', sizeof(DBENTRY));
 
     pdbentry->pdbbase = pdbbase;
     pdbentry->precordType = prec->rdes;
@@ -723,7 +723,7 @@ void dbInitEntryFromRecord(struct dbCommon *prec, DBENTRY *pdbentry)
 {
     dbCommonPvt *ppvt = dbRec2Pvt(prec);
 
-    memset((char *)pdbentry,'\0',sizeof(DBENTRY));
+    memset(pdbentry, '\0', sizeof(DBENTRY));
 
     pdbentry->pdbbase = pdbbase;
     pdbentry->precordType = prec->rdes;
@@ -805,7 +805,7 @@ int dbLoadRecords(const char* file, const char* subs)
         if(dbLoadRecordsHook)
             dbLoadRecordsHook(file, subs);
     } else {
-        fprintf(stderr, ERL_ERROR " failed to load '%s'\n", file);
+        fprintf(stderr, ERL_ERROR ": Failed to load '%s'\n", file);
         if(status==-2)
             fprintf(stderr, "    Records cannot be loaded after iocInit!\n");
     }
@@ -1070,7 +1070,7 @@ static long dbPutFieldLink(DBADDR *paddr,
     dbFldDes    *pfldDes = paddr->pfldDes;
     long        special = paddr->special;
     struct link *plink = (struct link *)paddr->pfield;
-    const char  *pstring = (const char *)pbuffer;
+    const char  *pstring = pbuffer;
     struct dsxt *old_dsxt = NULL;
     dset *new_dset = NULL;
     struct dsxt *new_dsxt = NULL;
@@ -1095,7 +1095,7 @@ static long dbPutFieldLink(DBADDR *paddr,
         return S_db_badDbrtype;
     }
 
-    status = dbParseLink(pstring, pfldDes->field_type, &link_info);
+    status = dbParseLink(pstring, pfldDes->field_type, &link_info, precord->name, pfldDes->name);
     if (status)
         return status;
 
@@ -1130,7 +1130,7 @@ static long dbPutFieldLink(DBADDR *paddr,
     }
 
     if (dbCanSetLink(plink, &link_info, new_devsup)) {
-        /* link type mis-match prevents assignment */
+        /* link type mismatch prevents assignment */
         status = S_dbLib_badField;
         goto unlock;
     }

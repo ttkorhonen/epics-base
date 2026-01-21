@@ -78,7 +78,7 @@ epicsStdCall macParseDefns(
     del[0] = FALSE;
     quote  = 0;
     state  = preName;
-    for ( c = (const char *) defns; *c != '\0'; c++ ) {
+    for ( c = defns; *c != '\0'; c++ ) {
 
         /* handle quotes */
         if ( quote )
@@ -184,7 +184,7 @@ epicsStdCall macParseDefns(
             *memCpp++ = memCp;
 
         /* copy value regardless of the above */
-        strncpy( memCp, (const char *) ptr[i], end[i] - ptr[i] );
+        strncpy( memCp, ptr[i], end[i] - ptr[i] );
         memCp += end[i] - ptr[i];
         *memCp++ = '\0';
     }
@@ -224,9 +224,9 @@ epicsStdCall macParseDefns(
     }
 
     /* free workspace */
-    free( ( void * ) ptr );
-    free( ( void * ) end );
-    free( ( char * ) del );
+    free( ( void * ) ptr ); /* cast away const */
+    free( ( void * ) end ); /* cast away const */
+    free( del );
 
     /* debug output */
     if ( handle != NULL && handle->debug & 1 )
@@ -238,9 +238,9 @@ epicsStdCall macParseDefns(
     /* error exit */
 error:
     errlogPrintf( "macParseDefns: failed to allocate memory\n" );
-    if ( ptr != NULL ) free( ( void * ) ptr );
-    if ( end != NULL ) free( ( void * ) end );
-    if ( del != NULL ) free( ( char * ) del );
+    if ( ptr != NULL ) free( ( void * ) ptr ); /* cast away const */
+    if ( end != NULL ) free( ( void * ) end ); /* cast away const */
+    if ( del != NULL ) free( del );
     *pairs = NULL;
     return -1;
 }

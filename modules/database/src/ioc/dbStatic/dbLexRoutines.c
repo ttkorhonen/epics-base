@@ -34,6 +34,7 @@
 #include "dbStaticLib.h"
 #include "dbStaticPvt.h"
 #include "epicsExport.h"
+#include "epicsAssert.h"
 #include "link.h"
 #include "special.h"
 #include "iocInit.h"
@@ -187,7 +188,7 @@ const char *dbOpenFile(DBBASE *pdbbase,const char *filename,FILE **fp)
         *fp = fopen(fullfilename, "r");
         if (*fp && makeDbdDepends)
             fprintf(stdout, "%s:%s \n", makeDbdDepends, fullfilename);
-        free((void *)fullfilename);
+        free(fullfilename);
         if (*fp) return pdbPathNode->directory;
         pdbPathNode = (dbPathNode *)ellNext(&pdbPathNode->node);
     }
@@ -206,7 +207,7 @@ static void freeInputFileList(void)
                 pinputFileNow->filename, strerror(errno));
         free((void *)pinputFileNow->filename);
         ellDelete(&inputFileList,(ELLNODE *)pinputFileNow);
-        free((void *)pinputFileNow);
+        free(pinputFileNow);
     }
 }
 
@@ -236,6 +237,8 @@ static long dbReadCOM(DBBASE **ppdbbase,const char *filename, FILE *fp,
         status = -2;
         goto cleanup;
     }
+
+    errlogInit(0); /* Initialize the errSymTable */
 
     if(*ppdbbase == 0) *ppdbbase = dbAllocBase();
     savedPdbbase = *ppdbbase;
@@ -339,11 +342,11 @@ cleanup:
     }
     if(macHandle) macDeleteHandle(macHandle);
     macHandle = NULL;
-    if(mac_input_buffer) free((void *)mac_input_buffer);
+    if(mac_input_buffer) free(mac_input_buffer);
     mac_input_buffer = NULL;
     if(freeListPvt) freeListCleanup(freeListPvt);
     freeListPvt = NULL;
-    if(my_buffer) free((void *)my_buffer);
+    if(my_buffer) free(my_buffer);
     my_buffer = NULL;
     freeInputFileList();
     if(fp)
@@ -351,14 +354,18 @@ cleanup:
     return(status);
 }
 
-long dbReadDatabase(DBBASE **ppdbbase,const char *filename,
-        const char *path,const char *substitutions)
-{return (dbReadCOM(ppdbbase,filename,0,path,substitutions));}
+long dbReadDatabase(DBBASE **ppdbbase, const char *filename,
+    const char *path, const char *substitutions)
+{
+    return dbReadCOM(ppdbbase, filename, 0, path, substitutions);
+}
 
-long dbReadDatabaseFP(DBBASE **ppdbbase,FILE *fp,
-        const char *path,const char *substitutions)
-{return (dbReadCOM(ppdbbase,0,fp,path,substitutions));}
-
+long dbReadDatabaseFP(DBBASE **ppdbbase, FILE *fp,
+    const char *path, const char *substitutions)
+{
+    return dbReadCOM(ppdbbase, 0, fp, path, substitutions);
+}
+
 static int db_yyinput(char *buf, int max_size)
 {
     size_t  l,n;
@@ -389,7 +396,7 @@ static int db_yyinput(char *buf, int max_size)
                     pinputFileNow->filename, strerror(errno));
             free((void *)pinputFileNow->filename);
             ellDelete(&inputFileList,(ELLNODE *)pinputFileNow);
-            free((void *)pinputFileNow);
+            free(pinputFileNow);
             pinputFileNow = (inputFile *)ellLast(&inputFileList);
             if(!pinputFileNow) return(0);
         }
@@ -445,7 +452,7 @@ static void dbIncludeNew(char *filename)
         fprintf(stderr, ERL_ERROR ": Can't open include file '%s'\n", filename);
         yyerror(NULL);
         free((void *)pinputFile->filename);
-        free((void *)pinputFile);
+        free(pinputFile);
         return;
     }
     pinputFile->fp = fp;
@@ -705,7 +712,7 @@ static void dbRecordtypeEmpty(void)
     ptempListNode = (tempListNode *)ellFirst(&tempList);
     pdbRecordType = ptempListNode->item;
     fprintf(stderr, ERL_ERROR
-        ": Declaration of recordtype(%s) preceeded full definition.\n",
+        ": Declaration of recordtype(%s) preceded full definition.\n",
         pdbRecordType->name);
     yyerrorAbort(NULL);
 }
@@ -1190,6 +1197,37 @@ static void dbRecordHead(char *recordType, char *name, int visible)
         dbVisibleRecord(pdbentry);
 }
 
+/* For better suggestions for wrong field names
+   the following array contains pairs of often
+   confused fields. Thus, the number of elements
+   must be even.
+   For the last character, ranges like A-F are
+   allowed as a shortcut. Pairs must have matching
+   range size.
+   If extending this map, please add only field names
+   found in record types from base.
+   Each array element (i.e. both sides of a pair)
+   is tested against the faulty field name.
+   The first match (considering ranges) where the
+   other side of the pair is an existing field name
+   (after adjusting for ranges) will be suggested
+   as a replacement.
+   If no such match is found, the suggestion falls
+   back to weighted lexical similarity with existing
+   field names.
+*/
+
+static const char* const dbFieldConfusionMap [] = {
+    "INP","OUT",
+    "DOL","INP",
+    "ZNAM","ZRST",
+    "ONAM","ONST",
+    "INPA-J","DOL0-9",
+    "INPK-P","DOLA-F",
+    "INP0-9","INPA-J"
+};
+STATIC_ASSERT(NELEMENTS(dbFieldConfusionMap)%2==0);
+
 static void dbRecordField(char *name,char *value)
 {
     DBENTRY *pdbentry;
@@ -1206,18 +1244,140 @@ static void dbRecordField(char *name,char *value)
             dbGetRecordTypeName(pdbentry), dbGetRecordName(pdbentry), name);
         if(dbGetRecordName(pdbentry)) {
             DBENTRY temp;
-            double bestSim = -1.0;
             const dbFldDes *bestFld = NULL;
+            int i;
             dbCopyEntryContents(pdbentry, &temp);
-            for(status = dbFirstField(&temp, 0); !status; status = dbNextField(&temp, 0)) {
-                double sim = epicsStrSimilarity(name, temp.pflddes->name);
-                if(!bestFld || sim > bestSim) {
-                    bestSim = sim;
+            for(i = 0; i < NELEMENTS(dbFieldConfusionMap); i++) {
+                const char* fieldname = dbFieldConfusionMap[i];
+                const char* replacement = dbFieldConfusionMap[i^1]; /* swap even with odd indices */
+                const char* guess = NULL;
+                char buf[8]; /* no field name is so long */
+                size_t l = strlen(fieldname);
+                if (l >= 3 && fieldname[l-2] == '-' &&
+                    strncmp(name, fieldname, l-3) == 0 &&
+                    name[l-3] >= fieldname[l-3] &&
+                    name[l-3] <= fieldname[l-1])
+                {
+                    /* range map (like XXXA-Z) */
+                    size_t l2 = strlen(replacement);
+                    strncpy(buf, replacement, sizeof(buf)-1);
+                    buf[l2-3] += name[l-3] - fieldname[l-3];
+                    buf[l2-2] = 0;
+                    guess = buf;
+                } else if (strcmp(name, fieldname) == 0) {
+                    /* simple map */
+                    guess = replacement;
+                }
+                if (guess && dbFindFieldPart(&temp, &guess) == 0) {
+                    /* guessed field exists */
                     bestFld = temp.pflddes;
+                    break;
+                }
+            }
+            if (!bestFld) {
+                /* no map found, use weighted lexical similarity
+                   the weights are a bit arbitrary */
+                double bestSim = -1.0;
+                char quote = 0;
+                if (*value == '"' || *value == '\'')
+                    quote = *value++;
+                for (status = dbFirstField(&temp, 0); !status; status = dbNextField(&temp, 0)) {
+                    if (temp.pflddes->special == SPC_NOMOD ||
+                        temp.pflddes->special == SPC_DBADDR) /* cannot be configured */
+                        continue;
+                    double sim = epicsStrSimilarity(name, temp.pflddes->name);
+                    if (!temp.pflddes->promptgroup)
+                        sim *= 0.5; /* no prompt: unlikely */
+                    if (temp.pflddes->interest)
+                        sim *= 1.0 - 0.1 * temp.pflddes->interest; /* 10% less likely per interest level */
+                    if (sim == 0)
+                        continue;
+                    if (*value != quote) {
+                        /* value given, check match to field type */
+                        long status = 0;
+                        char* end = &quote;
+
+                        switch (temp.pflddes->field_type) {
+                            epicsAny dummy;
+                            case DBF_CHAR:
+                                status = epicsParseInt8(value, &dummy.int8, 0, &end);
+                                break;
+                            case DBF_UCHAR:
+                                status = epicsParseUInt8(value, &dummy.uInt8, 0, &end);
+                                break;
+                            case DBF_SHORT:
+                                status = epicsParseInt16(value, &dummy.int16, 0, &end);
+                                break;
+                            case DBF_USHORT:
+                            case DBF_ENUM:
+                                status = epicsParseUInt16(value, &dummy.uInt16, 0, &end);
+                                break;
+                            case DBF_LONG:
+                                status = epicsParseInt32(value, &dummy.int32, 0, &end);
+                                break;
+                            case DBF_ULONG:
+                                status = epicsParseUInt32(value, &dummy.uInt32, 0, &end);
+                                break;
+                            case DBF_INT64:
+                                status = epicsParseInt64(value, &dummy.int64, 0, &end);
+                                break;
+                            case DBF_UINT64:
+                                status = epicsParseUInt64(value, &dummy.uInt64, 0, &end);
+                                break;
+                            case DBF_FLOAT:
+                                status = epicsParseFloat(value, &dummy.float32, &end);
+                                break;
+                            case DBF_DOUBLE:
+                                status = epicsParseDouble(value, &dummy.float64, &end);
+                                break;
+                            case DBF_MENU:
+                            case DBF_DEVICE: {
+                                char** choices;
+                                int nChoice;
+                                int choice;
+
+                                if (temp.pflddes->field_type == DBF_MENU) {
+                                    dbMenu* menu = (dbMenu*)temp.pflddes->ftPvt;
+                                    choices = menu->papChoiceValue;
+                                    nChoice = menu->nChoice;
+                                } else {
+                                    dbDeviceMenu* menu = (dbDeviceMenu*)temp.pflddes->ftPvt;
+                                    choices = menu->papChoice;
+                                    nChoice = menu->nChoice;
+                                }
+                                status = epicsParseUInt16(value, &dummy.uInt16, 0, &end);
+                                if (!status && *end == quote && dummy.uInt16 < nChoice) {
+                                    if (temp.pflddes->field_type == DBF_DEVICE)
+                                        sim *= 0.5; /* numeric device type index is uncommon */
+                                    break;
+                                }
+                                for (choice = 0; choice < nChoice; choice++) {
+                                    size_t len = strlen(choices[choice]);
+                                    end = value + len;
+                                    if (strncmp(value, choices[choice], len) == 0 && *end == quote) {
+                                        sim *= 1.5; /* boost for matching choice string */
+                                        status = 0;
+                                        break;
+                                    }
+                                }
+                                if (choice == nChoice)
+                                    status = S_stdlib_noConversion;
+                                break;
+                            }
+                            default:
+                                break;
+                        }
+                        if (status || *end != quote)
+                            sim *= 0.1; /* value type does not match field type: unlikely */
+                    }
+                    if (sim > bestSim) {
+                        bestSim = sim;
+                        bestFld = temp.pflddes;
+                    }
                 }
             }
             dbFinishEntry(&temp);
-            if(bestSim>0.0) {
+            if (bestFld) {
                 fprintf(stderr, "    Did you mean \"%s\"?", bestFld->name);
                 if(bestFld->prompt)
                     fprintf(stderr, "  (%s)", bestFld->prompt);

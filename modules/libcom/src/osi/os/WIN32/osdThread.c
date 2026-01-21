@@ -41,7 +41,7 @@
  * prototypes only appear in the windows SDK 8 and above.
  * VS2010 supplies sdk 7, but can be upgraded to later SDK 
 
- * To accomodate this we suuply prototypes on, for XP
+ * To accommodate this we supply prototypes on, for XP
  * fall back to Tls*() which will build and run
  * correctly for epicsThreads, but means that TLS allocations from
  * epicsThreadImplicitCreate() will continue to leak (for non-EPICS threads).
@@ -49,13 +49,13 @@
  * Also, WINE circa 5.0.3 provides the FLS storage functions, but doesn't
  * actually run the dtor function.
  *
- * we check for existance of _WIN32_WINNT_WIN8 which will only be defined
+ * we check for existence of _WIN32_WINNT_WIN8 which will only be defined
  * in SDK 8 and above. If Visa is detected and SDK < 8 we will supply
  * the missing prototypes
  */
 
 #if _WIN32_WINNT >= 0x0600 /* VISTA */
-#   ifdef _WIN32_WINNT_WIN8 /* Existance means using SDK 8 or higher */
+#   ifdef _WIN32_WINNT_WIN8 /* Existence means using SDK 8 or higher */
 #       include <fibersapi.h>
 #   else
 #       include <winnt.h> /* for PFLS_CALLBACK_FUNCTION */
@@ -1042,12 +1042,12 @@ static void epicsThreadShowInfo ( epicsThreadId id, unsigned level )
     if ( pParm ) {
         unsigned long idForFormat = pParm->id;
         fprintf ( epicsGetStdout(), "%-15s %-8p %-8lx %-9u %-9s %-7s", pParm->pName,
-            (void *) pParm, idForFormat, pParm->epicsPriority,
+            pParm, idForFormat, pParm->epicsPriority,
             epics_GetThreadPriorityAsString ( pParm->handle ),
             epicsThreadIsSuspended ( id ) ? "suspend" : "ok" );
         if ( level ) {
             fprintf (epicsGetStdout(), " %-8p %-8p ",
-                (void *) pParm->handle, (void *) pParm->parm );
+                pParm->handle, pParm->parm );
         }
         if(!epicsAtomicGetIntT(&pParm->isRunning))
             fprintf (epicsGetStdout(), " ZOMBIE");
@@ -1187,7 +1187,7 @@ LIBCOM_API void epicsStdCall epicsThreadPrivateDelete ( epicsThreadPrivateId p )
  */
 LIBCOM_API void epicsStdCall epicsThreadPrivateSet ( epicsThreadPrivateId pPvt, void *pVal )
 {
-    BOOL stat = TlsSetValue ( pPvt->key, (void *) pVal );
+    BOOL stat = TlsSetValue ( pPvt->key, pVal );
     assert (stat);
 }
 
@@ -1196,7 +1196,7 @@ LIBCOM_API void epicsStdCall epicsThreadPrivateSet ( epicsThreadPrivateId pPvt, 
  */
 LIBCOM_API void * epicsStdCall epicsThreadPrivateGet ( epicsThreadPrivateId pPvt )
 {
-    return ( void * ) TlsGetValue ( pPvt->key );
+    return TlsGetValue ( pPvt->key );
 }
 
 /*

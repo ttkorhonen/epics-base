@@ -65,7 +65,7 @@ const char * ca_message_text []
 "Sorry, that feature is planned but not supported at this time",
 "The supplied string is unusually large",
 "The request was ignored because the specified channel is disconnected",
-"The data type specifed is invalid",
+"The data type specified is invalid",
 
 "Remote Channel not found",
 "Unable to locate all user specified channels",
@@ -94,7 +94,7 @@ const char * ca_message_text []
 "The supplied string is empty",
 "Unable to spawn the CA repeater thread- auto reconnect will fail",
 "No channel id match for search reply- search reply ignored",
-"Reseting dead connection- will try to reconnect",
+"Resetting dead connection- will try to reconnect",
 "Server (IOC) has fallen behind or is not responding- still waiting",
 
 "No internet interface with broadcast available",
@@ -196,7 +196,7 @@ int epicsStdCall ca_context_create (
             return ECA_ALLOCMEM;
         }
 
-        epicsThreadPrivateSet ( caClientContextId, (void *) pcac );
+        epicsThreadPrivateSet ( caClientContextId, pcac );
     }
     catch ( ... ) {
         return ECA_ALLOCMEM;
@@ -381,11 +381,11 @@ int epicsStdCall ca_clear_channel ( chid pChan )
     }
     else {
         //
-        // we will definately stall out here if all of the
+        // we will definitely stall out here if all of the
         // following are true
         //
         // o user creates non-preemptive mode client library context
-        // o user doesnt periodically call a ca function
+        // o user doesn't periodically call a ca function
         // o user calls this function from an auxiliary thread
         //
         CallbackGuard cbGuard ( cac.cbMutex );
@@ -715,6 +715,18 @@ int epicsStdCall ca_context_status ( ca_client_context * pcac, unsigned level )
 {
     pcac->show ( level );
     return ECA_NORMAL;
+}
+
+extern "C"
+LIBCA_API
+void dbCaSyncLocal(void);
+
+void dbCaSyncLocal(void)
+{
+    if(struct ca_client_context * ctxt = ca_current_context()) {
+        // bounce for access to private data member
+        ctxt->sync();
+    }
 }
 
 /*

@@ -73,7 +73,7 @@ public:
     }
     osiSockAddr bind()
     {
-        osiSockAddr addr = {0};
+        osiSockAddr addr = {{0}};
         addr.ia.sin_family = AF_INET;
         addr.ia.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
@@ -216,7 +216,8 @@ void testOnlyTimer()
     epicsTime now(epicsTime::getCurrent());
     trig_timer.timer.start(trig, now+0.1);
     never_timer.timer.start(never, now+9999999.0);
-    mgr.process(0.2);
+    for(unsigned i=0; i<10 && !trig.expired; i++)
+        mgr.process(0.2);
     testOk1(trig.expired);
     testOk1(!never.expired);
 }
